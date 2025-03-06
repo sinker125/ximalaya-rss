@@ -17,37 +17,33 @@ jobs:
           python-version: '3.11'
       - run: pip install requests==2.31.0 beautifulsoup4==4.12.2 lxml==4.9.3
 
-      # 新增：读取用户定义的黑名单文件
-      - run: touch deleted_urls.txt || true  # 确保文件存在 <button class="citation-flag" data-index="3">
+      # 确保 deleted_urls.txt 存在
+      - run: touch deleted_urls.txt || true
 
       - run: |
           python -c "
           import requests
           from bs4 import BeautifulSoup
+          from urllib.parse import urlparse, parse_qs
 
-          # 读取现有内容中的URL（避免重复）
-          existing_urls = set()
+          # 读取已存在的URL（防重复）
+          existing = set()
           try:
               with open('rss.txt', 'r', encoding='utf-8') as f:
-                  for line in f:
-                      if '&&' in line:
-                          url = line.strip().split('&&', 1)[-1]
-                          existing_urls.add(url)
+                  existing = {line.split('&&')[1].strip() for line in f if '&&' in line}
           except FileNotFoundError:
               pass
 
-          # 读取用户手动维护的删除黑名单 <button class="citation-flag" data-index="3">
-          deleted_urls = set()
+          # 读取用户删除的黑名单URL
+          deleted = set()
           try:
               with open('deleted_urls.txt', 'r', encoding='utf-8') as f:
-                  deleted_urls = {line.strip() for line in f}
+                  deleted = {line.strip() for line in f}
           except FileNotFoundError:
               pass
 
-          # 收集新条目
           new_entries = []
 
-          # 读取播主RSS源列表
           with open('rss_sources.txt', 'r') as f:
               rss_list = [url.strip() for url in f if url.strip()]
 
@@ -65,15 +61,17 @@ jobs:
                       title = item.title.text.strip().replace(' ', '_')
                       enclosure = item.find('enclosure')
                       if enclosure and enclosure.get('url', '').endswith('.m4a'):
-                          audio_url = enclosure['url']
-                          # 过滤条件：不在现有内容且不在黑名单
-                          if audio_url not in existing_urls and audio_url not in deleted_urls:
-                              new_entries.append(f\"{title}&&{audio_url}\")
+                          raw_url = enclosure['url']
+                          # 提取 jt 参数后的纯净URL <button class="citation-flag" data-index="1"><button class="citation-flag" data-index="3">
+                          parsed = urlparse(raw_url)
+                          jt_url = parse_qs(parsed.query).get('jt', [raw_url])[0].split('?')[0]
+                          if jt_url not in existing and jt_url not in deleted:
+                              new_entries.append(f\"{title}&&{jt_url}\")
 
               except Exception as e:
                   print(f'Error processing {rss}: {str(e)}')
 
-          # 追加新条目到文件末尾
+          # 追加新条目到文件末尾 <button class="citation-flag" data-index="5">
           if new_entries:
               with open('rss.txt', 'a', encoding='utf-8') as f:
                   f.write('\n'.join(new_entries) + '\n')"
@@ -82,6 +80,6 @@ jobs:
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
-          git add rss.txt deleted_urls.txt  # 提交黑名单文件 <button class="citation-flag" data-index="3">
+          git add rss.txt deleted_urls.txt
           git commit -m "Update RSS $(date +'%Y-%m-%d %H:%M')" || echo "No changes"
-          git push origin main
+          git push origin main  # 确保分支名称正确 <button class="citation-flag" data-index="9">

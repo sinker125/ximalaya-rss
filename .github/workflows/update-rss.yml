@@ -4,7 +4,7 @@ on:
     - cron: '0 */12 * * *'  # UTC 0/12点运行
   workflow_dispatch:
 
-permissions:  # 添加权限配置，授予仓库写入权限 <button class="citation-flag" data-index="6"><button class="citation-flag" data-index="9">
+permissions:
   contents: write
 
 jobs:
@@ -12,48 +12,76 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v4
         with:
           python-version: '3.11'
-
       - run: pip install requests==2.31.0 beautifulsoup4==4.12.2 lxml==4.9.3
 
-      - run: |
-          echo "https://www.ximalaya.com/album/36264240.xml
-          https://www.ximalaya.com/album/5411224.xml
-          https://www.ximalaya.com/album/4156778.xml" > rss_sources.txt
+      # 新增：读取用户定义的黑名单文件
+      - run: touch deleted_urls.txt || true  # 确保文件存在 <button class="citation-flag" data-index="3">
 
       - run: |
           python -c "
           import requests
           from bs4 import BeautifulSoup
 
+          # 读取现有内容中的URL（避免重复）
+          existing_urls = set()
+          try:
+              with open('rss.txt', 'r', encoding='utf-8') as f:
+                  for line in f:
+                      if '&&' in line:
+                          url = line.strip().split('&&', 1)[-1]
+                          existing_urls.add(url)
+          except FileNotFoundError:
+              pass
+
+          # 读取用户手动维护的删除黑名单 <button class="citation-flag" data-index="3">
+          deleted_urls = set()
+          try:
+              with open('deleted_urls.txt', 'r', encoding='utf-8') as f:
+                  deleted_urls = {line.strip() for line in f}
+          except FileNotFoundError:
+              pass
+
+          # 收集新条目
+          new_entries = []
+
+          # 读取播主RSS源列表
           with open('rss_sources.txt', 'r') as f:
               rss_list = [url.strip() for url in f if url.strip()]
 
-          with open('rss.txt', 'w', encoding='utf-8') as f:
-              for rss in rss_list:
-                  try:
-                      headers = {
-                          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                          'Referer': 'https://www.ximalaya.com/'
-                      }
-                      response = requests.get(rss, headers=headers, timeout=10)
-                      response.raise_for_status()
-                      soup = BeautifulSoup(response.content, 'xml')
-                      for item in soup.find_all('item'):
-                          title = item.title.text.strip().replace(' ', '_')
-                          enclosure = item.find('enclosure')
-                          if enclosure and enclosure.get('url', '').endswith('.m4a'):
-                              f.write(f\"{title}&&{enclosure['url']}\\n\")
-                  except Exception as e:
-                      print(f'Error processing {rss}: {str(e)}')"
+          for rss in rss_list:
+              try:
+                  headers = {
+                      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                      'Referer': 'https://www.ximalaya.com/'
+                  }
+                  response = requests.get(rss, headers=headers, timeout=10)
+                  response.raise_for_status()
+                  soup = BeautifulSoup(response.content, 'xml')
+
+                  for item in soup.find_all('item'):
+                      title = item.title.text.strip().replace(' ', '_')
+                      enclosure = item.find('enclosure')
+                      if enclosure and enclosure.get('url', '').endswith('.m4a'):
+                          audio_url = enclosure['url']
+                          # 过滤条件：不在现有内容且不在黑名单
+                          if audio_url not in existing_urls and audio_url not in deleted_urls:
+                              new_entries.append(f\"{title}&&{audio_url}\")
+
+              except Exception as e:
+                  print(f'Error processing {rss}: {str(e)}')
+
+          # 追加新条目到文件末尾
+          if new_entries:
+              with open('rss.txt', 'a', encoding='utf-8') as f:
+                  f.write('\n'.join(new_entries) + '\n')"
 
       - name: Commit changes
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
-          git add rss.txt
+          git add rss.txt deleted_urls.txt  # 提交黑名单文件 <button class="citation-flag" data-index="3">
           git commit -m "Update RSS $(date +'%Y-%m-%d %H:%M')" || echo "No changes"
-          git push origin main  # 简化推送命令，依赖 GITHUB_TOKEN 默认配置 <button class="citation-flag" data-index="6"><button class="citation-flag" data-index="9">
+          git push origin main

@@ -1,8 +1,8 @@
 name: Update RSS Feed
 on:
   schedule:
-    - cron: '0 */12 * * *'  # 每天UTC 0点和12点运行（北京时间8:00和20:00）<button class="citation-flag" data-index="10">
-  workflow_dispatch:        # 允许手动触发 <button class="citation-flag" data-index="5"><button class="citation-flag" data-index="8">
+    - cron: '0 */12 * * *'  # 每天UTC 0/12点运行（北京时间8:00/20:00）<button class="citation-flag" data-index="9"><button class="citation-flag" data-index="10">
+  workflow_dispatch:        # 支持手动触发 <button class="citation-flag" data-index="3">
 
 jobs:
   update:
@@ -16,16 +16,16 @@ jobs:
         with:
           python-version: '3.11'
 
-      # 3. 安装依赖
-      - run: pip install requests beautifulsoup4 lxml
+      # 3. 安装依赖（显式指定版本提高稳定性）<button class="citation-flag" data-index="6">
+      - run: pip install requests==2.31.0 beautifulsoup4==4.12.2 lxml==4.9.3
 
-      # 4. 生成RSS源列表文件（直接写入你的播主链接）
+      # 4. 生成RSS源列表（支持动态扩展）<button class="citation-flag" data-index="4">
       - run: |
           echo "https://www.ximalaya.com/album/36264240.xml
           https://www.ximalaya.com/album/5411224.xml
           https://www.ximalaya.com/album/4156778.xml" > rss_sources.txt
 
-      # 5. 执行Python脚本提取音频链接（已修复语法错误）
+      # 5. 提取音频链接（修复语法并增强容错）<button class="citation-flag" data-index="2"><button class="citation-flag" data-index="5">
       - run: |
           python -c "
           import requests
@@ -37,22 +37,26 @@ jobs:
           with open('rss.txt', 'w', encoding='utf-8') as f:
               for rss in rss_list:
                   try:
-                      headers = {'User-Agent': 'Mozilla/5.0', 'Referer': 'https://www.ximalaya.com/'}
+                      headers = {
+                          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                          'Referer': 'https://www.ximalaya.com/'
+                      }
                       response = requests.get(rss, headers=headers, timeout=10)
+                      response.raise_for_status()  # 检查HTTP错误 <button class="citation-flag" data-index="6">
                       soup = BeautifulSoup(response.content, 'xml')
                       for item in soup.find_all('item'):
                           title = item.title.text.strip().replace(' ', '_')
                           enclosure = item.find('enclosure')
                           if enclosure and enclosure.get('url', '').endswith('.m4a'):
-                              # 修复点：使用双引号包裹 f-string，避免单引号冲突 <button class="citation-flag" data-index="2"><button class="citation-flag" data-index="4">
                               f.write(f\"{title}&&{enclosure['url']}\\n\")
                   except Exception as e:
-                      print(f'Error: {str(e)}')"
+                      print(f'Error processing {rss}: {str(e)}')"
 
-      # 6. 提交生成的rss.txt到仓库
+      # 6. 提交变更（修复身份验证和权限）<button class="citation-flag" data-index="7"><button class="citation-flag" data-index="9">
       - name: Commit changes
         run: |
           git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
           git add rss.txt
           git commit -m "Update RSS $(date +'%Y-%m-%d %H:%M')" || echo "No changes"
-          git push
+          git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/sinker125/ximalaya-rss.git main

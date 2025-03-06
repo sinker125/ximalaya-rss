@@ -1,31 +1,29 @@
 name: Update RSS Feed
 on:
   schedule:
-    - cron: '0 */12 * * *'  # 每天UTC 0/12点运行（北京时间8:00/20:00）<button class="citation-flag" data-index="9"><button class="citation-flag" data-index="10">
-  workflow_dispatch:        # 支持手动触发 <button class="citation-flag" data-index="3">
+    - cron: '0 */12 * * *'  # UTC 0/12点运行
+  workflow_dispatch:
+
+permissions:  # 添加权限配置，授予仓库写入权限 <button class="citation-flag" data-index="6"><button class="citation-flag" data-index="9">
+  contents: write
 
 jobs:
   update:
     runs-on: ubuntu-latest
     steps:
-      # 1. 检出代码
       - uses: actions/checkout@v4
 
-      # 2. 设置Python环境
       - uses: actions/setup-python@v4
         with:
           python-version: '3.11'
 
-      # 3. 安装依赖（显式指定版本提高稳定性）<button class="citation-flag" data-index="6">
       - run: pip install requests==2.31.0 beautifulsoup4==4.12.2 lxml==4.9.3
 
-      # 4. 生成RSS源列表（支持动态扩展）<button class="citation-flag" data-index="4">
       - run: |
           echo "https://www.ximalaya.com/album/36264240.xml
           https://www.ximalaya.com/album/5411224.xml
           https://www.ximalaya.com/album/4156778.xml" > rss_sources.txt
 
-      # 5. 提取音频链接（修复语法并增强容错）<button class="citation-flag" data-index="2"><button class="citation-flag" data-index="5">
       - run: |
           python -c "
           import requests
@@ -42,7 +40,7 @@ jobs:
                           'Referer': 'https://www.ximalaya.com/'
                       }
                       response = requests.get(rss, headers=headers, timeout=10)
-                      response.raise_for_status()  # 检查HTTP错误 <button class="citation-flag" data-index="6">
+                      response.raise_for_status()
                       soup = BeautifulSoup(response.content, 'xml')
                       for item in soup.find_all('item'):
                           title = item.title.text.strip().replace(' ', '_')
@@ -52,11 +50,10 @@ jobs:
                   except Exception as e:
                       print(f'Error processing {rss}: {str(e)}')"
 
-      # 6. 提交变更（修复身份验证和权限）<button class="citation-flag" data-index="7"><button class="citation-flag" data-index="9">
       - name: Commit changes
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
           git add rss.txt
           git commit -m "Update RSS $(date +'%Y-%m-%d %H:%M')" || echo "No changes"
-          git push https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/sinker125/ximalaya-rss.git main
+          git push origin main  # 简化推送命令，依赖 GITHUB_TOKEN 默认配置 <button class="citation-flag" data-index="6"><button class="citation-flag" data-index="9">

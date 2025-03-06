@@ -1,27 +1,39 @@
 name: Update RSS Feed
 on:
   schedule:
-    - cron: '0 */12 * * *'  # 每天UTC 0点和12点运行
-  workflow_dispatch:        # 支持手动触发
+    - cron: '0 */12 * * *'  # 每天UTC 0点和12点运行（北京时间8:00和20:00）<button class="citation-flag" data-index="10">
+  workflow_dispatch:        # 允许手动触发 <button class="citation-flag" data-index="5"><button class="citation-flag" data-index="8">
+
 jobs:
   update:
     runs-on: ubuntu-latest
     steps:
+      # 1. 检出代码
       - uses: actions/checkout@v4
+
+      # 2. 设置Python环境
       - uses: actions/setup-python@v4
         with:
           python-version: '3.11'
+
+      # 3. 安装依赖
       - run: pip install requests beautifulsoup4 lxml
+
+      # 4. 生成RSS源列表文件（直接写入你的播主链接）
       - run: |
           echo "https://www.ximalaya.com/album/36264240.xml
           https://www.ximalaya.com/album/5411224.xml
           https://www.ximalaya.com/album/4156778.xml" > rss_sources.txt
+
+      # 5. 执行Python脚本提取音频链接
       - run: |
           python -c "
           import requests
           from bs4 import BeautifulSoup
+
           with open('rss_sources.txt', 'r') as f:
               rss_list = [url.strip() for url in f if url.strip()]
+
           with open('rss.txt', 'w') as f:
               for rss in rss_list:
                   try:
@@ -35,6 +47,8 @@ jobs:
                               f.write(f'{title}&&{enclosure['url']}\n')
                   except Exception as e:
                       print(f'Error: {str(e)}')"
+
+      # 6. 提交生成的rss.txt到仓库
       - name: Commit changes
         run: |
           git config user.name "GitHub Actions"

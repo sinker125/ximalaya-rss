@@ -1,0 +1,43 @@
+name: Update RSS Feed
+on:
+  schedule:
+    - cron: '0 */12 * * *'  # 每天UTC 0点和12点运行
+  workflow_dispatch:        # 支持手动触发
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      - run: pip install requests beautifulsoup4 lxml
+      - run: |
+          echo "https://www.ximalaya.com/album/36264240.xml
+          https://www.ximalaya.com/album/5411224.xml
+          https://www.ximalaya.com/album/4156778.xml" > rss_sources.txt
+      - run: |
+          python -c "
+          import requests
+          from bs4 import BeautifulSoup
+          with open('rss_sources.txt', 'r') as f:
+              rss_list = [url.strip() for url in f if url.strip()]
+          with open('rss.txt', 'w') as f:
+              for rss in rss_list:
+                  try:
+                      headers = {'User-Agent': 'Mozilla/5.0', 'Referer': 'https://www.ximalaya.com/'}
+                      response = requests.get(rss, headers=headers, timeout=10)
+                      soup = BeautifulSoup(response.content, 'xml')
+                      for item in soup.find_all('item'):
+                          title = item.title.text.strip().replace(' ', '_')
+                          enclosure = item.find('enclosure')
+                          if enclosure and enclosure.get('url', '').endswith('.m4a'):
+                              f.write(f'{title}&&{enclosure['url']}\n')
+                  except Exception as e:
+                      print(f'Error: {str(e)}')"
+      - name: Commit changes
+        run: |
+          git config user.name "GitHub Actions"
+          git add rss.txt
+          git commit -m "Update RSS $(date +'%Y-%m-%d %H:%M')" || echo "No changes"
+          git push

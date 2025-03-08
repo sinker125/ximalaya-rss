@@ -11,21 +11,27 @@ jobs:
   update:
     runs-on: ubuntu-latest
     steps:
+      # 1. 强制禁用缓存，深度克隆仓库
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # 禁用浅层克隆，确保获取最新文件 <button class="citation-flag" data-index="6">
+          fetch-depth: 0  # 拉取全部提交历史 <button class="citation-flag" data-index="6">
+          clean: true     # 清除本地缓存文件 <button class="citation-flag" data-index="6">
 
+      # 2. 设置Python环境
       - uses: actions/setup-python@v4
         with:
           python-version: '3.11'
+          cache: false   # 禁用Python依赖缓存 <button class="citation-flag" data-index="5">
 
-      - run: pip install --no-cache-dir requests==2.31.0 beautifulsoup4==4.12.2 lxml==4.9.3  # 禁用pip缓存 <button class="citation-flag" data-index="5">
+      # 3. 安装依赖（禁用缓存）
+      - run: pip install --no-cache-dir requests==2.31.0 beautifulsoup4==4.12.2 lxml==4.9.3  # <button class="citation-flag" data-index="5">
 
+      # 4. 清理系统级缓存
       - run: |
-          # 强制清除本地缓存（防止残留）<button class="citation-flag" data-index="2"><button class="citation-flag" data-index="4">
           sudo apt-get clean
-          sudo rm -rf /var/lib/apt/lists/*
+          sudo rm -rf /var/lib/apt/lists/*  # 清除Ubuntu包缓存 <button class="citation-flag" data-index="4">
 
+      # 5. 处理黑名单文件
       - run: |
           python -c "
           import sys
@@ -41,17 +47,18 @@ jobs:
           except FileNotFoundError:
               pass
 
-          # 保存纯URL到临时文件（避免格式污染）<button class="citation-flag" data-index="6">
+          # 保存纯URL到临时文件（避免格式污染）<button class="citation-flag" data-index="3">
           with open('deleted_urls.pure.txt', 'w', encoding='utf-8') as f:
               f.write('\n'.join(deleted_urls))"
 
+      # 6. 核心抓取逻辑（强制清除HTTP缓存）
       - run: |
           python -c "
           import requests
           from bs4 import BeautifulSoup
           from urllib.parse import urlparse, parse_qs
 
-          # 读取已存在的URL（防重复）
+          # 读取现有URL（防重复）<button class="citation-flag" data-index="5">
           existing = set()
           try:
               with open('rss.txt', 'r', encoding='utf-8') as f:
@@ -59,7 +66,7 @@ jobs:
           except FileNotFoundError:
               pass
 
-          # 读取纯URL黑名单 <button class="citation-flag" data-index="3"><button class="citation-flag" data-index="6">
+          # 读取纯URL黑名单 <button class="citation-flag" data-index="6">
           deleted = set()
           try:
               with open('deleted_urls.pure.txt', 'r', encoding='utf-8') as f:
@@ -77,7 +84,7 @@ jobs:
                   headers = {
                       'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                       'Referer': 'https://www.ximalaya.com/',
-                      'Cache-Control': 'no-cache, no-store, must-revalidate',  # 强制清除HTTP缓存 <button class="citation-flag" data-index="1"><button class="citation-flag" data-index="5">
+                      'Cache-Control': 'no-cache, no-store, must-revalidate',  # 强制清除HTTP缓存 <button class="citation-flag" data-index="1"><button class="citation-flag" data-index="2">
                       'Pragma': 'no-cache',
                       'Expires': '0'
                   }
@@ -93,11 +100,11 @@ jobs:
                           parsed = urlparse(raw_url)
                           jt_url = parse_qs(parsed.query).get('jt', [raw_url])[0].split('?')[0]
                           
-                          # 严格过滤逻辑 <button class="citation-flag" data-index="6"><button class="citation-flag" data-index="7">
+                          # 严格过滤逻辑 <button class="citation-flag" data-index="6"><button class="citation-flag" data-index="9">
                           if jt_url not in existing and jt_url not in deleted:
                               new_entries.append(f\"{title}&&{jt_url}\")
                           else:
-                              print(f'Skipped: {jt_url}')  # 调试日志 <button class="citation-flag" data-index="2">
+                              print(f'Filtered: {jt_url}')  # 调试日志 <button class="citation-flag" data-index="2">
 
               except Exception as e:
                   print(f'Error processing {rss}: {str(e)}')
@@ -107,10 +114,13 @@ jobs:
               with open('rss.txt', 'a', encoding='utf-8') as f:
                   f.write('\n'.join(new_entries) + '\n')"
 
+      # 7. 提交并强制同步远程分支
       - name: Commit changes
         run: |
           git config user.name "GitHub Actions"
           git config user.email "actions@github.com"
-          git add rss.txt deleted_urls.pure.txt  # 提交纯URL文件 <button class="citation-flag" data-index="6">
+          git config pull.rebase false  # 避免冲突 <button class="citation-flag" data-index="4">
+          git add rss.txt deleted_urls.pure.txt
           git commit -m "Update RSS $(date +'%Y-%m-%d %H:%M')" || echo "No changes"
-          git push origin main
+          git pull origin main || true  # 先拉取远程更新 <button class="citation-flag" data-index="4">
+          git push origin main --force  # 强制推送（慎用，仅用于修复冲突）<button class="citation-flag" data-index="6">

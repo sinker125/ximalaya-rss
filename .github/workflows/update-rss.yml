@@ -11,130 +11,113 @@ jobs:
   update:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout latest code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           ref: main
-          fetch-depth: 0  # 拉取全量历史 <button class="citation-flag" data-index="1">
+          fetch-depth: 0
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - uses: actions/setup-python@v4
         with:
           python-version: '3.11'
 
-      - name: Install dependencies
-        run: |
-          pip install --no-cache-dir requests==2.31.0 beautifulsoup4==4.12.2 lxml==4.9.3 python-dateutil==2.8.2  # 新增时间解析库 <button class="citation-flag" data-index="4"><button class="citation-flag" data-index="6">
+      - run: pip install requests==2.31.0 beautifulsoup4==4.12.2 lxml==4.9.3 python-dateutil==2.8.2
 
       - name: Extract pure URLs from deleted_urls.txt
         run: |
-          python -c "
+          python -c '
+          import sys
           deleted_urls = set()
           try:
-              with open('deleted_urls.txt', 'r', encoding='utf-8') as f:
+              with open("deleted_urls.txt", "r", encoding="utf-8") as f:
                   for line in f:
-                      if '&&' in line:
-                          _, url = line.strip().split('&&', 1)
+                      if "&&" in line:
+                          _, url = line.strip().split("&&", 1)
                           deleted_urls.add(url.strip())
           except FileNotFoundError:
               pass
-          with open('deleted_urls.pure.txt', 'w', encoding='utf-8') as f:
-              f.write('\n'.join(deleted_urls))"
+          with open("deleted_urls.pure.txt", "w", encoding="utf-8") as f:
+              f.write("\n".join(deleted_urls))'
 
       - name: Update RSS feed
         run: |
-          python -c "
+          python -c '
           import requests
           from bs4 import BeautifulSoup
           from urllib.parse import urlparse, parse_qs
           from datetime import datetime
-          from dateutil.parser import parse  # 解析时间 <button class="citation-flag" data-index="4"><button class="citation-flag" data-index="6">
+          from dateutil.parser import parse
 
-          # 读取黑名单
           deleted = set()
           try:
-              with open('deleted_urls.pure.txt', 'r', encoding='utf-8') as f:
+              with open("deleted_urls.pure.txt", "r", encoding="utf-8") as f:
                   deleted = {line.strip() for line in f}
           except FileNotFoundError:
               pass
 
-          # 读取现有条目并保留其时间信息
           existing_entries = []
           try:
-              with open('rss.txt', 'r', encoding='utf-8') as f:
+              with open("rss.txt", "r", encoding="utf-8") as f:
                   for line in f:
-                      if '&&' in line:
-                          title_part, url_part = line.strip().split('&&', 1)
-                          existing_entries.append((parse(''), title_part, url_part))  # 需补充时间字段逻辑
+                      if "&&" in line:
+                          title, url = line.strip().split("&&", 1)
+                          existing_entries.append((datetime.min, title, url))
           except FileNotFoundError:
               pass
 
-          all_entries = []  # 存储元组 (pub_date, title, url)
-
-          with open('rss_sources.txt', 'r') as f:
+          all_entries = []
+          with open("rss_sources.txt", "r") as f:
               rss_list = [url.strip() for url in f if url.strip()]
 
           for rss in rss_list:
               try:
                   headers = {
-                      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                      'Referer': 'https://www.ximalaya.com/',
-                      'Cache-Control': 'no-cache, no-store, must-revalidate',  # 强制无缓存请求 <button class="citation-flag" data-index="4">
-                      'Pragma': 'no-cache',
-                      'Expires': '0'
+                      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+                      "Referer": "https://www.ximalaya.com/",
+                      "Cache-Control": "no-cache, no-store, must-revalidate",
+                      "Pragma": "no-cache",
+                      "Expires": "0"
                   }
-                  # 添加随机时间戳参数绕过服务器缓存 <button class="citation-flag" data-index="5">
-                  response = requests.get(f'{rss}?_t={int(datetime.now().timestamp())}', headers=headers, timeout=10)
+                  # 添加时间戳参数强制刷新缓存
+                  timestamp = int(datetime.now().timestamp())
+                  response = requests.get(f"{rss}?_t={timestamp}", headers=headers, timeout=10)
                   response.raise_for_status()
-                  soup = BeautifulSoup(response.content, 'xml')
+                  soup = BeautifulSoup(response.content, "xml")
 
-                  for item in soup.find_all('item'):
-                      title = item.title.text.strip().replace(' ', '_')
-                      enclosure = item.find('enclosure')
-                      if enclosure and enclosure.get('url', '').endswith('.m4a'):
-                          raw_url = enclosure['url']
+                  for item in soup.find_all("item"):
+                      title = item.title.text.strip().replace(" ", "_") if item.title else ""
+                      enclosure = item.find("enclosure")
+                      if enclosure and enclosure.get("url", "").endswith(".m4a"):
+                          raw_url = enclosure["url"]
                           parsed = urlparse(raw_url)
-                          jt_url = parse_qs(parsed.query).get('jt', [raw_url])[0].split('?')[0]
+                          jt_url = parse_qs(parsed.query).get("jt", [raw_url])[0].split("?")[0]
 
-                          # 提取发布时间（关键新增）
-                          pub_date_str = item.pubDate.text.strip() if item.pubDate else ''
+                          # 提取发布时间
+                          pub_date_str = item.pubDate.text.strip() if item.pubDate else ""
                           pub_date = parse(pub_date_str) if pub_date_str else datetime.min
 
                           if jt_url not in deleted:
                               all_entries.append((pub_date, title, jt_url))
                           else:
-                              print(f'Filtered by blacklist: {jt_url}')
+                              print(f"Filtered by blacklist: {jt_url}")
 
               except Exception as e:
-                  print(f'Error processing {rss}: {str(e)}')
+                  print(f"Error processing {rss}: {str(e)}")
 
           # 合并旧条目并按时间排序
-          try:
-              with open('rss.txt', 'r', encoding='utf-8') as f:
-                  existing_lines = [line.strip() for line in f]
-          except FileNotFoundError:
-              existing_lines = []
+          existing_urls = {url for (_, _, url) in existing_entries}
+          new_entries = []
+          for entry in all_entries:
+              if entry[2] not in existing_urls:
+                  new_entries.append(entry)
 
-          # 保留旧条目但排除黑名单
-          existing_entries = []
-          for line in existing_lines:
-              if '&&' in line:
-                  title_part, url_part = line.split('&&', 1)
-                  existing_entries.append((datetime.min, title_part, url_part))  # 假设旧条目时间靠后
+          # 合并并排序
+          combined = new_entries + existing_entries
+          combined.sort(key=lambda x: x[0], reverse=True)
 
-          # 合并新旧条目并去重
-          url_set = set(jt_url for (_, _, jt_url) in all_entries)
-          for entry in existing_entries:
-              if entry[2] not in url_set and entry[2] not in deleted:
-                  all_entries.append(entry)
-
-          # 按发布时间降序排序（最新在前）
-          all_entries.sort(key=lambda x: x[0], reverse=True)
-
-          # 写入文件时覆盖写入并按时间排序
-          with open('rss.txt', 'w', encoding='utf-8') as f:
-              for entry in all_entries:
-                  f.write(f\"{entry[1]}&&{entry[2]}\n\")
+          # 覆盖写入文件，最新内容在开头
+          with open("rss.txt", "w", encoding="utf-8") as f:
+              for entry in combined:
+                  f.write(f"{entry[1]}&&{entry[2]}\n")'
 
       - name: Commit changes
         run: |
@@ -142,4 +125,4 @@ jobs:
           git config user.email "actions@github.com"
           git add rss.txt deleted_urls.pure.txt
           git commit -m "Update RSS $(date +'%Y-%m-%d %H:%M')" || echo "No changes"
-          git push origin main --force  # 强制推送确保更新 <button class="citation-flag" data-index="6">
+          git push origin main --force

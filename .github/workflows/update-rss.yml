@@ -1,7 +1,7 @@
 name: Update RSS Feed
 on:
   schedule:
-    - cron: '0 */12 * * *'  # UTC 0/12点运行
+    - cron: '0 12 * * 5'  # UTC 0/12点运行
   workflow_dispatch:
 
 permissions:
